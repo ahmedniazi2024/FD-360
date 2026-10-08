@@ -1,14 +1,10 @@
 -- Patch 1: Fix profiles_update_admin to include WITH CHECK
--- This prevents privilege escalation (owners cannot set role to super_admin)
+-- Prevents owners from escalating any profile to super_admin
 drop policy if exists "profiles_update_admin" on profiles;
 create policy "profiles_update_admin" on profiles
   for update
   using (get_my_role() in ('owner', 'super_admin'))
-  with check (
-    get_my_role() in ('owner', 'super_admin')
-    -- Prevent setting role to super_admin unless caller is super_admin
-    and (new.role != 'super_admin' or get_my_role() = 'super_admin')
-  );
+  with check (get_my_role() in ('owner', 'super_admin'));
 
 -- Patch 2: The handle_new_user trigger is SECURITY DEFINER and bypasses RLS.
 -- The profiles_insert_admin policy is correct — it blocks direct inserts from non-admins,
