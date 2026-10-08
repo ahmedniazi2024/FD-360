@@ -1,18 +1,11 @@
 -- Patch 1: Fix profiles_update_admin to include WITH CHECK
--- Prevents owners from escalating any profile to super_admin
 drop policy if exists "profiles_update_admin" on profiles;
 create policy "profiles_update_admin" on profiles
   for update
   using (get_my_role() in ('owner', 'super_admin'))
   with check (get_my_role() in ('owner', 'super_admin'));
 
--- Patch 2: The handle_new_user trigger is SECURITY DEFINER and bypasses RLS.
--- The profiles_insert_admin policy is correct — it blocks direct inserts from non-admins,
--- while the trigger (security definer) can still insert freely.
--- No change needed here.
-
--- Patch 3: Ensure the get_my_role() function handles the case where
--- the calling user doesn't have a profile yet (e.g., during profile creation trigger)
+-- Patch 2: Fix get_my_role() to return 'employee' as default instead of NULL
 create or replace function get_my_role()
 returns text as $$
   select coalesce(
@@ -20,3 +13,16 @@ returns text as $$
     'employee'
   )
 $$ language sql security definer stable;
+
+-- Patch 3: Fix "Database error creating new user"
+-- The handle_new_user trigger runs with auth.uid() = NULL,
+-- so the old insert policy blocked it. This allows the trigger (and service role) to insert.
+drop policy if exists "profiles_insert_admin" on profiles;
+drop policy if exists "profiles_insert" on profiles;
+create policy "profiles_insert" on profiles
+  for insert
+  with check (
+    auth.uid() is null
+    or get_my_role() in ('owner', 'super_admin')
+    or auth.uid() = id
+  );
