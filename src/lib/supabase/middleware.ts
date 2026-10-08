@@ -46,7 +46,15 @@ export async function updateSession(request: NextRequest) {
 
   if (user && isAuthPage) {
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    // Redirect to the correct area based on role to avoid double-redirect
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    if (profile?.role === "super_admin") url.pathname = "/admin";
+    else if (profile?.role === "owner") url.pathname = "/owner";
+    else url.pathname = "/dashboard";
     return NextResponse.redirect(url);
   }
 
